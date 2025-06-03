@@ -1,0 +1,46 @@
+node_modules
+# Keep environment variables out of version control
+.env
+# Ignore build artifacts
+dist
+# Ignore logs
+logs
+# Ignore temporary files
+*.tmp
+# Ignore coverage reports
+coverage
+# Ignore IDE specific files
+.idea
+# Ignore OS generated files
+.DS_Store
+# Ignore npm debug logs
+npm-debug.log
+# Ignore yarn lock files
+yarn.lock
+# Ignore package lock files
+package-lock.json
+# Ignore build directories
+build
+# Ignore test output
+test-output
+# Ignore Docker files
+Dockerfile
+# Ignore Docker Compose files
+docker-compose.yml
+# Ignore configuration files
+config.json
+# Ignore local development files
+local-config.json
+# Ignore specific environment files
+.env.local
+# Ignore specific environment files for production
+.env.production
+
+# Ignore Prisma migrations
+/prisma/
+/src/generated/
+
+# Ignore Firebase configuration files
+/firebase_services/firebase.js
+/firebase_services/dwello-homes-firebase-adminsdk-fbsvc-166b167823.json
+
