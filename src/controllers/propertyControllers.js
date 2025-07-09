@@ -53,6 +53,7 @@ exports.getAllProperties = async (req, res) => {
       },
     });
   } catch (error) {
+    console.error("Error fetching properties:", error);
     res.status(500).json({ error: error.message });
   }
 };
@@ -86,8 +87,6 @@ exports.createProperty = async (req, res) => {
       },
     });
 
-    console.log("New property created:", newProperty);
-
     // Create property_amenities junction records
     if (amenities && Array.isArray(amenities) && amenities.length > 0) {
       const propertyAmenitiesData = amenities.map((amenityId) => ({
@@ -101,6 +100,12 @@ exports.createProperty = async (req, res) => {
       });
     }
 
+    // Emit Socket.IO event for real-time updates
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("propertyCreated", newProperty);
+    }
+
     res.status(201).json(newProperty);
   } catch (error) {
     console.error("Create property error:", error);
@@ -111,23 +116,73 @@ exports.createProperty = async (req, res) => {
 // Update a property
 exports.updateProperty = async (req, res) => {
   const { id } = req.params;
-  const data = req.body;
+  const { amenities, removed_images, ...propertyData } = req.body;
 
   try {
-    const property = await prisma.properties.update({
-      where: { id },
-      data: {
-        ...data,
-        updated_at: new Date(),
-      },
+    // Start a transaction to handle property update and amenities
+    const result = await prisma.$transaction(async (tx) => {
+      // Update the main property
+      const updatedProperty = await tx.properties.update({
+        where: { id },
+        data: {
+          ...propertyData,
+          price: parseInt(propertyData.price, 10),
+          bedrooms: parseInt(propertyData.bedrooms, 10),
+          bathrooms: parseInt(propertyData.bathrooms, 10),
+          updated_at: new Date(),
+        },
+      });
+
+      // Handle amenities if provided
+      if (amenities && Array.isArray(amenities)) {
+        // First, remove all existing amenities for this property
+        await tx.property_amenities.deleteMany({
+          where: { property_id: id },
+        });
+
+        // Then add the new amenities
+        if (amenities.length > 0) {
+          const propertyAmenitiesData = amenities.map((amenityName) => ({
+            property_id: id,
+            amenity_id: amenityName, // This should be the amenity name for now
+          }));
+
+          await tx.property_amenities.createMany({
+            data: propertyAmenitiesData,
+            skipDuplicates: true,
+          });
+        }
+      }
+
+      // Handle image removal if provided
+      if (removed_images && Array.isArray(removed_images)) {
+        // For now, we'll just log the removed images
+        // In a real implementation, you'd want to delete from storage
+        console.log('Images to be removed:', removed_images);
+      }
+
+      return updatedProperty;
     });
 
-    res.json(property);
+    // Fetch the updated property with amenities
+    const updatedPropertyWithAmenities = await prisma.properties.findUnique({
+      where: { id },
+      include: { property_amenities: true },
+    });
+
+    // Emit Socket.IO event for real-time updates
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("propertyUpdated", updatedPropertyWithAmenities);
+    }
+
+    res.json(updatedPropertyWithAmenities);
   } catch (error) {
-    console.error(error);
-    res
-      .status(500)
-      .json({ message: "Error updating property", error: error.message });
+    console.error("Error updating property:", error);
+    res.status(500).json({ 
+      message: "Error updating property", 
+      error: error.message 
+    });
   }
 };
 
@@ -136,8 +191,37 @@ exports.deleteProperty = async (req, res) => {
   const { id } = req.params;
   try {
     await prisma.properties.delete({ where: { id } });
+    // Emit Socket.IO event for real-time updates
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("propertyDeleted", id);
+    }
     res.json({ message: "Property deleted successfully" });
   } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+};
+
+// Toggle featured status
+exports.toggleFeatured = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const property = await prisma.properties.findUnique({
+      where: { id },
+    });
+
+    if (!property) {
+      return res.status(404).json({ message: "Property not found" });
+    }
+
+    const updatedProperty = await prisma.properties.update({
+      where: { id },
+      data: { is_featured: !property.is_featured },
+    });
+
+    res.json(updatedProperty);
+  } catch (error) {
+    console.error("Error toggling featured status:", error);
     res.status(500).json({ error: error.message });
   }
 };

@@ -35,6 +35,7 @@ local-config.json
 .env.local
 # Ignore specific environment files for production
 .env.production
+env.example
 
 # Ignore Prisma migrations
 /prisma/
@@ -44,3 +45,13 @@ local-config.json
 /firebase_services/firebase.js
 /firebase_services/dwello-homes-firebase-adminsdk-fbsvc-166b167823.json
 
+ADMIN_TESTING_GUIDE.md
+COMPLETE_SETUP.md
+DEBUG_GUIDE.md
+debug-server.js
+QUICK_START.md
+TESTING_SUMMARY.md
+test-user-endpoints.js
+test-api.js
+setup.sh
+setup-admin-token.js

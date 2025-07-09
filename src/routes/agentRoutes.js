@@ -9,17 +9,15 @@ router.get("/agents", agentControllers.getAllAgents);
 // POST a new agent profile (requires authentication)
 router.post("/agents", verifyToken, agentControllers.createAgent);
 
-// GET agent profile by Firebase UID (requires authentication to ensure users can only access their own profile or if you have admin roles)
+// GET agent profile by Firebase UID (requires authentication)
 router.get("/agents/me", verifyToken, agentControllers.getAgentByFirebaseUid);
 
-// GET agent profile by agent ID (publicly accessible if you want agent profiles visible)
-router.get("/agents/:id", agentControllers.getAgentById);
-
-// GET agent profile by agent ID (publicly accessible if you want agent profiles visible)
-router.get("/agents/:slug", agentControllers.getAgentBySlug);
-
-// PUT /api/agents/me - Update the logged-in agent's profile (requires authentication)
+// PUT update the logged-in agent's profile (requires authentication)
 router.put("/agents/me", verifyToken, agentControllers.updateAgent);
+
+// GET agent profile by slug (publicly accessible)
+// This route must come AFTER /agents/me to avoid conflicts
+router.get("/agents/:slug", agentControllers.getAgentBySlug);
 
 // Add other agent-related routes as needed (e.g., update agent profile)
 

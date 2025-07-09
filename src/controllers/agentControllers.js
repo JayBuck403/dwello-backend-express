@@ -3,8 +3,20 @@ const { PrismaClient } = require("../generated/prisma");
 const prisma = new PrismaClient();
 
 exports.createAgent = async (req, res) => {
-  const { firebase_uid, name, phone_call, phone_whatsapp, email, bio } =
-    req.body;
+  const {
+    firebase_uid,
+    name,
+    phone_call,
+    phone_whatsapp,
+    email,
+    bio,
+    slug,
+    title,
+    profile_picture,
+    experience,
+    areasServed,
+    specializations,
+  } = req.body;
 
   try {
     const existingAgent = await prisma.agents.findUnique({
@@ -23,10 +35,21 @@ exports.createAgent = async (req, res) => {
         phone_whatsapp,
         email,
         bio,
+        slug,
+        title,
+        profile_picture,
+        experience,
+        areasServed,
+        specializations,
         status: "pending",
       },
     });
 
+    // Emit Socket.IO event
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("agentCreated", agent);
+    }
     res.status(201).json(agent);
   } catch (error) {
     console.error("Error registering agent:", error);
@@ -37,7 +60,8 @@ exports.createAgent = async (req, res) => {
 // Route to get all agents
 exports.getAllAgents = async (req, res) => {
   try {
-    const agents = await prisma.agent.findMany();
+    const agents = await prisma.agents.findMany();
+    console.log(agents)
     res.status(200).json(agents);
   } catch (error) {
     console.error("Error fetching agents:", error);
@@ -46,24 +70,24 @@ exports.getAllAgents = async (req, res) => {
 };
 
 // Route to get a specific agent by ID
-exports.getAgentById = async (req, res) => {
-  const { id } = req.params;
+// exports.getAgentById = async (req, res) => {
+//   const { id } = req.params;
 
-  try {
-    const agent = await prisma.agent.findUnique({
-      where: { id },
-    });
+//   try {
+//     const agent = await prisma.agent.findUnique({
+//       where: { id },
+//     });
 
-    if (!agent) {
-      return res.status(404).json({ message: "Agent not found" });
-    }
+//     if (!agent) {
+//       return res.status(404).json({ message: "Agent not found" });
+//     }
 
-    res.status(200).json(agent);
-  } catch (error) {
-    console.error("Error fetching agent:", error);
-    res.status(500).json({ message: "Internal server error" });
-  }
-};
+//     res.status(200).json(agent);
+//   } catch (error) {
+//     console.error("Error fetching agent:", error);
+//     res.status(500).json({ message: "Internal server error" });
+//   }
+// };
 
 // Route to get agent by slug
 // This route is publicly accessible
@@ -74,9 +98,14 @@ exports.getAgentBySlug = async (req, res) => {
   const { slug } = req.params;
 
   try {
-    const agent = await prisma.agent.findUnique({
+    const agent = await prisma.agents.findUnique({
       where: { slug },
+      include: {
+        properties: true, // this includes listings for the agent
+      },
     });
+
+    console.log("Agent fetched by slug:", agent);
 
     if (!agent) {
       return res.status(404).json({ message: "Agent not found" });
@@ -91,12 +120,15 @@ exports.getAgentBySlug = async (req, res) => {
 
 // Route to get the logged-in agent's profile by Firebase UID
 exports.getAgentByFirebaseUid = async (req, res) => {
-  console.log(req.user);
-  const { uid } = req.user; // Assuming req.user is set by the authentication middleware
+  console.log("User from Firebase middleware:", req.user);
+  const { uid } = req.user; // Get Firebase UID from authenticated user
 
   try {
     const agent = await prisma.agents.findUnique({
       where: { firebase_uid: uid },
+      include: {
+        properties: true,
+      },
     });
 
     if (!agent) {
@@ -112,20 +144,20 @@ exports.getAgentByFirebaseUid = async (req, res) => {
 
 // Route to update an agent
 exports.updateAgent = async (req, res) => {
-  const { id } = req.params;
-  const { full_name, phone, company, license_number } = req.body;
+  const { uid } = req.user; // Get Firebase UID from authenticated user
+  const updateData = req.body;
 
   try {
-    const agent = await prisma.agent.update({
-      where: { id },
-      data: {
-        full_name,
-        phone,
-        company,
-        license_number,
-      },
+    const agent = await prisma.agents.update({
+      where: { firebase_uid: uid },
+      data: updateData,
     });
 
+    // Emit Socket.IO event
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("agentUpdated", agent);
+    }
     res.status(200).json(agent);
   } catch (error) {
     console.error("Error updating agent:", error);
@@ -139,10 +171,15 @@ exports.deleteAgent = async (req, res) => {
   const { id } = req.params;
 
   try {
-    await prisma.agent.delete({
+    await prisma.agents.delete({
       where: { id },
     });
 
+    // Emit Socket.IO event
+    const io = req.app.get("io");
+    if (io) {
+      io.emit("agentDeleted", id);
+    }
     res.status(200).json({ message: "Agent deleted successfully" });
   } catch (error) {
     console.error("Error deleting agent:", error);
@@ -153,7 +190,7 @@ exports.deleteAgent = async (req, res) => {
 // Admin route to get all pending agents
 exports.getPendingAgents = async (_req, res) => {
   try {
-    const agents = await prisma.agent.findMany({
+    const agents = await prisma.agents.findMany({
       where: { status: "pending" },
     });
     res.status(200).json(agents);
@@ -169,7 +206,7 @@ exports.approveAgent = async (req, res) => {
   const { id } = req.params;
 
   try {
-    const agent = await prisma.agent.update({
+    const agent = await prisma.agents.update({
       where: { id },
       data: { status: "approved" },
     });
