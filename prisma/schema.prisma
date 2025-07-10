@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum agent_status {
+  pending
+  approved
+  rejected
+}
+
+model agents {
+  id              String        @id @default(uuid()) @db.Uuid
+  name            String        @db.VarChar(255)
+  email           String        @unique @db.VarChar(255)
+  phone_call      String?       @db.VarChar(20)
+  phone_whatsapp  String?       @db.VarChar(20)
+  bio             String?
+  profile_picture String?       @db.VarChar(2048)
+  slug            String?       @unique @db.VarChar(255)
+  status          agent_status  @default(pending)
+  is_approved     Boolean       @default(false)
+  created_at      DateTime      @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime      @default(now()) @db.Timestamptz(6)
+  firebase_uid    String        @unique @db.VarChar(128)
+  title           String?
+  experience      Int?
+  specializations String[]
+  areasServed     String[]
+
+  blog_posts      blog_posts[]
+  properties      properties[]
+
+  @@index([email], map: "idx_agent_email")
+  @@index([firebase_uid], map: "idx_agent_firebase_uid")
+  @@index([slug], map: "idx_agent_slug")
+}
+
+model amenities {
+  id                 Int                  @id @default(autoincrement())
+  name               String               @unique @db.VarChar(100)
+  property_amenities property_amenities[]
+
+  @@index([name], map: "idx_amenity_name")
+}
+
+model blog_posts {
+  id           Int       @id @default(autoincrement())
+  title        String    @db.VarChar(255)
+  slug         String    @unique @db.VarChar(255)
+  content      String
+  author_id    String?   @db.Uuid
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  image_url    String?   @db.VarChar(255)
+  tags         String[]
+  is_published Boolean   @default(false)
+  excerpt      String?
+
+  agents       agents?   @relation(fields: [author_id], references: [id], onUpdate: NoAction)
+
+  @@index([slug], map: "idx_blog_posts_slug")
+}
+
+model properties {
+  id                 String               @id @default(uuid()) @db.Uuid
+  title              String               @db.VarChar(255)
+  slug               String?              @unique @db.VarChar(255)
+  description        String
+  property_type      String?              @default("other") @db.VarChar(20)
+  listing_type       String?              @default("sale") @db.VarChar(20)
+  location           String               @db.VarChar(255)
+  region             String               @db.VarChar(50)
+  price              Int?
+  currency           String?              @default("GH₵") @db.VarChar(20)
+  bedrooms           Int?
+  bathrooms          Int?
+  area               String?              @db.VarChar(100)
+  area_unit          String?              @default("sqft") @db.VarChar(20)
+  featured_image_url String?              @db.VarChar(2048)
+  image_urls         Json?                @default("[]")
+  is_featured        Boolean              @default(false)
+  status             String?              @default("available") @db.VarChar(20)
+  created_at         DateTime             @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime             @default(now()) @db.Timestamptz(6)
+
+  agent_id           String?              @db.Uuid
+  agents             agents?              @relation(fields: [agent_id], references: [id])
+  property_amenities property_amenities[]
+  saved_properties   saved_properties[]
+  user_activity      user_activity[]
+
+  @@index([is_featured], map: "idx_is_featured")
+  @@index([listing_type], map: "idx_listing_type")
+  @@index([location], map: "idx_location")
+  @@index([price], map: "idx_price")
+  @@index([property_type], map: "idx_property_type")
+  @@index([region], map: "idx_region")
+  @@index([status], map: "idx_status")
+}
+
+model property_amenities {
+  property_id String     @db.Uuid
+  amenity_id  Int
+
+  amenities   amenities  @relation(fields: [amenity_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+  properties  properties @relation(fields: [property_id], references: [id], onDelete: Cascade, onUpdate: NoAction)
+
+  @@id([property_id, amenity_id])
+  @@index([amenity_id], map: "idx_property_amenity_amenity_id")
+  @@index([property_id], map: "idx_property_amenity_property_id")
+}
+
+model users {
+  id              String    @id @default(uuid()) @db.Uuid
+  firebase_uid    String    @unique @db.VarChar(128)
+  name            String?   @db.VarChar(255)
+  email           String    @unique @db.VarChar(255)
+  phone           String?   @db.VarChar(20)
+  created_at      DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at      DateTime  @default(now()) @db.Timestamptz(6)
+
+  saved_properties saved_properties[]
+  user_activity    user_activity[]
+  user_alerts      user_alerts[]
+
+  @@index([firebase_uid], map: "idx_user_firebase_uid")
+  @@index([email], map: "idx_user_email")
+}
+
+model saved_properties {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String    @db.Uuid
+  property_id String   @db.Uuid
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  properties properties @relation(fields: [property_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, property_id])
+  @@index([user_id], map: "idx_saved_properties_user_id")
+  @@index([property_id], map: "idx_saved_properties_property_id")
+}
+
+model user_activity {
+  id         String    @id @default(uuid()) @db.Uuid
+  user_id    String    @db.Uuid
+  property_id String   @db.Uuid
+  action     String    @db.VarChar(50) // 'viewed', 'searched', etc.
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+
+  users      users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  properties properties @relation(fields: [property_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_user_activity_user_id")
+  @@index([property_id], map: "idx_user_activity_property_id")
+  @@index([created_at], map: "idx_user_activity_created_at")
+}
+
+model user_alerts {
+  id          String    @id @default(uuid()) @db.Uuid
+  user_id     String    @db.Uuid
+  name        String    @db.VarChar(255)
+  criteria    Json      // Store search criteria as JSON
+  frequency   String    @db.VarChar(20) // 'daily', 'weekly', 'monthly'
+  is_active   Boolean   @default(true)
+  created_at  DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime  @default(now()) @db.Timestamptz(6)
+
+  users       users     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@index([user_id], map: "idx_user_alerts_user_id")
+  @@index([is_active], map: "idx_user_alerts_is_active")
+}
