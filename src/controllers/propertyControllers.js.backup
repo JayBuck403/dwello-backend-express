@@ -1,7 +1,8 @@
 const { PrismaClient } = require("../generated/prisma");
-const prisma = new PrismaClient();
 
+const prisma = new PrismaClient();
 // use `prisma` in your application to read and write data in your DB
+
 exports.getAllProperties = async (req, res) => {
   const {
     region,
@@ -14,18 +15,23 @@ exports.getAllProperties = async (req, res) => {
     page = 1,
     limit = 10,
   } = req.query;
+
   const filters = {};
+
   if (region) filters.region = region;
   if (property_type) filters.property_type = property_type;
   if (listing_type) filters.listing_type = listing_type;
   if (status) filters.status = status;
   if (is_featured !== undefined) filters.is_featured = is_featured === "true";
+
   if (minPrice || maxPrice) {
     filters.price = {};
     if (minPrice) filters.price.gte = parseInt(minPrice);
     if (maxPrice) filters.price.lte = parseInt(maxPrice);
   }
+
   const skip = (parseInt(page) - 1) * parseInt(limit);
+
   try {
     const [properties, total] = await Promise.all([
       prisma.properties.findMany({
@@ -33,30 +39,10 @@ exports.getAllProperties = async (req, res) => {
         skip,
         take: parseInt(limit),
         orderBy: { created_at: "desc" },
-        include: {
-          agents: {
-            select: {
-              id: true,
-              name: true,
-              email: true,
-              profile_picture: true,
-              phone_call: true,
-              phone_whatsapp: true,
-              title: true,
-              bio: true,
-              experience: true,
-              slug: true,
-            }
-          },
-          property_amenities: {
-            include: {
-              amenities: true
-            }
-          }
-        },
       }),
       prisma.properties.count({ where: filters }),
     ]);
+
     res.json({
       data: properties,
       meta: {
@@ -78,27 +64,7 @@ exports.getPropertyById = async (req, res) => {
   try {
     const property = await prisma.properties.findUnique({
       where: { id },
-      include: { 
-        property_amenities: {
-          include: {
-            amenities: true
-          }
-        },
-        agents: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            profile_picture: true,
-            phone_call: true,
-            phone_whatsapp: true,
-            title: true,
-            bio: true,
-            experience: true,
-            slug: true,
-          }
-        }
-      },
+      include: { property_amenities: true },
     });
     if (!property)
       return res.status(404).json({ message: "Property not found" });
@@ -111,6 +77,7 @@ exports.getPropertyById = async (req, res) => {
 // Create a new property
 exports.createProperty = async (req, res) => {
   const { amenities, ...propertyData } = req.body;
+
   try {
     // Create the main property first
     const newProperty = await prisma.properties.create({
@@ -119,22 +86,26 @@ exports.createProperty = async (req, res) => {
         price: parseInt(propertyData.price, 10), // ensure price is an integer
       },
     });
+
     // Create property_amenities junction records
     if (amenities && Array.isArray(amenities) && amenities.length > 0) {
       const propertyAmenitiesData = amenities.map((amenityId) => ({
         property_id: newProperty.id,
         amenity_id: amenityId,
       }));
+
       await prisma.property_amenities.createMany({
         data: propertyAmenitiesData,
         skipDuplicates: true,
       });
     }
+
     // Emit Socket.IO event for real-time updates
     const io = req.app.get("io");
     if (io) {
       io.emit("propertyCreated", newProperty);
     }
+
     res.status(201).json(newProperty);
   } catch (error) {
     console.error("Create property error:", error);
@@ -146,6 +117,7 @@ exports.createProperty = async (req, res) => {
 exports.updateProperty = async (req, res) => {
   const { id } = req.params;
   const { amenities, removed_images, ...propertyData } = req.body;
+
   try {
     // Start a transaction to handle property update and amenities
     const result = await prisma.$transaction(async (tx) => {
@@ -160,62 +132,50 @@ exports.updateProperty = async (req, res) => {
           updated_at: new Date(),
         },
       });
+
       // Handle amenities if provided
       if (amenities && Array.isArray(amenities)) {
         // First, remove all existing amenities for this property
         await tx.property_amenities.deleteMany({
           where: { property_id: id },
         });
+
         // Then add the new amenities
         if (amenities.length > 0) {
           const propertyAmenitiesData = amenities.map((amenityName) => ({
             property_id: id,
             amenity_id: amenityName, // This should be the amenity name for now
           }));
+
           await tx.property_amenities.createMany({
             data: propertyAmenitiesData,
             skipDuplicates: true,
           });
         }
       }
+
       // Handle image removal if provided
       if (removed_images && Array.isArray(removed_images)) {
         // For now, we'll just log the removed images
         // In a real implementation, you'd want to delete from storage
         console.log('Images to be removed:', removed_images);
       }
+
       return updatedProperty;
     });
-    // Fetch the updated property with amenities and agent
+
+    // Fetch the updated property with amenities
     const updatedPropertyWithAmenities = await prisma.properties.findUnique({
       where: { id },
-      include: { 
-        property_amenities: {
-          include: {
-            amenities: true
-          }
-        },
-        agents: {
-          select: {
-            id: true,
-            name: true,
-            email: true,
-            profile_picture: true,
-            phone_call: true,
-            phone_whatsapp: true,
-            title: true,
-            bio: true,
-            experience: true,
-            slug: true,
-          }
-        }
-      },
+      include: { property_amenities: true },
     });
+
     // Emit Socket.IO event for real-time updates
     const io = req.app.get("io");
     if (io) {
       io.emit("propertyUpdated", updatedPropertyWithAmenities);
     }
+
     res.json(updatedPropertyWithAmenities);
   } catch (error) {
     console.error("Error updating property:", error);
@@ -249,13 +209,16 @@ exports.toggleFeatured = async (req, res) => {
     const property = await prisma.properties.findUnique({
       where: { id },
     });
+
     if (!property) {
       return res.status(404).json({ message: "Property not found" });
     }
+
     const updatedProperty = await prisma.properties.update({
       where: { id },
       data: { is_featured: !property.is_featured },
     });
+
     res.json(updatedProperty);
   } catch (error) {
     console.error("Error toggling featured status:", error);
