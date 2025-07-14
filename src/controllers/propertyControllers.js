@@ -5,18 +5,31 @@ const prisma = new PrismaClient();
 exports.getAllProperties = async (req, res) => {
   const {
     region,
+    location,
     property_type,
+    type,
     listing_type,
     status,
     is_featured,
     minPrice,
     maxPrice,
+    bedrooms,
+    bathrooms,
+    area_min,
+    area_max,
+    minArea,
+    maxArea,
     page = 1,
     limit = 10,
+    amenities,
   } = req.query;
   const filters = {};
+  // Support both region and location (frontend may send either)
   if (region) filters.region = region;
+  else if (location) filters.region = location;
+  // Support both property_type and type
   if (property_type) filters.property_type = property_type;
+  else if (type) filters.property_type = type;
   if (listing_type) filters.listing_type = listing_type;
   if (status) filters.status = status;
   if (is_featured !== undefined) filters.is_featured = is_featured === "true";
@@ -24,6 +37,58 @@ exports.getAllProperties = async (req, res) => {
     filters.price = {};
     if (minPrice) filters.price.gte = parseInt(minPrice);
     if (maxPrice) filters.price.lte = parseInt(maxPrice);
+  }
+  // Bedrooms filter (exact or minimum)
+  if (bedrooms) {
+    const num = parseInt(bedrooms);
+    if (!isNaN(num)) filters.bedrooms = { gte: num };
+  }
+  // Bathrooms filter (exact or minimum)
+  if (bathrooms) {
+    const num = parseInt(bathrooms);
+    if (!isNaN(num)) filters.bathrooms = { gte: num };
+  }
+  // Area filter (area is a string, so compare as number if possible)
+  const areaField = {};
+  const areaMin = parseFloat(area_min || minArea);
+  const areaMax = parseFloat(area_max || maxArea);
+  if (!isNaN(areaMin)) areaField.gte = areaMin;
+  if (!isNaN(areaMax)) areaField.lte = areaMax;
+  if (Object.keys(areaField).length > 0) {
+    // Prisma expects string, so use a custom filter
+    filters.AND = filters.AND || [];
+    if (areaField.gte !== undefined) {
+      filters.AND.push({
+        area: { not: null, gte: String(areaField.gte) }
+      });
+    }
+    if (areaField.lte !== undefined) {
+      filters.AND.push({
+        area: { not: null, lte: String(areaField.lte) }
+      });
+    }
+  }
+  // Amenities filter (must have ALL specified amenities)
+  if (amenities) {
+    let amenityIds = [];
+    if (Array.isArray(amenities)) {
+      amenityIds = amenities.map(id => parseInt(id)).filter(id => !isNaN(id));
+    } else if (typeof amenities === "string") {
+      const id = parseInt(amenities);
+      if (!isNaN(id)) amenityIds = [id];
+    }
+    if (amenityIds.length > 0) {
+      filters.AND = filters.AND || [];
+      amenityIds.forEach((id) => {
+        filters.AND.push({
+          property_amenities: {
+            some: {
+              amenity_id: id
+            }
+          }
+        });
+      });
+    }
   }
   const skip = (parseInt(page) - 1) * parseInt(limit);
   try {
