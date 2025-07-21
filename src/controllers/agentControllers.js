@@ -60,7 +60,9 @@ exports.createAgent = async (req, res) => {
 // Route to get all agents
 exports.getAllAgents = async (req, res) => {
   try {
-    const agents = await prisma.agents.findMany();
+    const agents = await prisma.agents.findMany({
+      include: { properties: true }
+    });
     console.log(agents)
     res.status(200).json(agents);
   } catch (error) {
