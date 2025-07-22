@@ -144,25 +144,73 @@ exports.getAgentByFirebaseUid = async (req, res) => {
   }
 };
 
-// Route to update an agent
+// Route to update an agent (edit request, requires approval)
 exports.updateAgent = async (req, res) => {
   const { uid } = req.user; // Get Firebase UID from authenticated user
   const updateData = req.body;
 
   try {
+    // Save edits to pending_profile_edits and set status to 'pending'
     const agent = await prisma.agents.update({
       where: { firebase_uid: uid },
-      data: updateData,
+      data: {
+        pending_profile_edits: updateData,
+        status: "pending",
+      },
     });
 
     // Emit Socket.IO event
     const io = req.app.get("io");
     if (io) {
-      io.emit("agentUpdated", agent);
+      io.emit("agentEditPending", agent);
     }
-    res.status(200).json(agent);
+    res.status(200).json({ message: "Profile edits submitted for approval.", agent });
   } catch (error) {
-    console.error("Error updating agent:", error);
+    console.error("Error submitting agent edits:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Admin route to approve pending profile edits
+exports.approveAgentEdits = async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Get the agent and their pending edits
+    const agent = await prisma.agents.findUnique({ where: { id } });
+    if (!agent || !agent.pending_profile_edits) {
+      return res.status(404).json({ message: "No pending edits to approve." });
+    }
+    // Apply the pending edits to the main profile fields
+    const updatedAgent = await prisma.agents.update({
+      where: { id },
+      data: {
+        ...agent.pending_profile_edits,
+        pending_profile_edits: null,
+        status: "approved",
+      },
+    });
+    res.status(200).json({ message: "Profile edits approved.", agent: updatedAgent });
+  } catch (error) {
+    console.error("Error approving agent edits:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// Admin route to reject pending profile edits
+exports.rejectAgentEdits = async (req, res) => {
+  const { id } = req.params;
+  try {
+    // Clear the pending edits and set status back to approved
+    const updatedAgent = await prisma.agents.update({
+      where: { id },
+      data: {
+        pending_profile_edits: null,
+        status: "approved",
+      },
+    });
+    res.status(200).json({ message: "Profile edits rejected.", agent: updatedAgent });
+  } catch (error) {
+    console.error("Error rejecting agent edits:", error);
     res.status(500).json({ message: "Internal server error" });
   }
 };

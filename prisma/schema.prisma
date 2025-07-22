@@ -32,6 +32,7 @@ model agents {
   experience      Int?
   specializations String[]
   areasServed     String[]
+  pending_profile_edits Json?
 
   blog_posts      blog_posts[]
   properties      properties[]
